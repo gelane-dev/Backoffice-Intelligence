@@ -21,7 +21,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://frontend-seven-iota-24.vercel.app",
+        "https://frontend-gelane.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
