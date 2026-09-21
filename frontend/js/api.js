@@ -4,6 +4,7 @@
 
 const TOKEN_KEY = "bi_token";
 const USER_KEY = "bi_user";
+const API_BASE_URL = "https://backoffice-intelligence.onrender.com";
 
 /* ── Auth ────────────────────────────────────────────── */
 function token() {
@@ -27,7 +28,7 @@ async function api(path, options = {}) {
   if (options.body && !(options.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
-  const res = await fetch(path, { ...options, headers });
+  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   if (res.status === 401) {
     logout();
     throw new Error("Sessão expirada");
