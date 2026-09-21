@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Assistente inteligente — consulte operações, pendências e indicadores com linguagem natural." />
+  <title>Assistente · Backoffice Intelligence</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <!-- mobile -->
+  <button class="mobile-toggle" aria-label="Menu"></button>
+  <div class="mobile-overlay"></div>
+
+  <div class="shell">
+    <!-- ── Sidebar ──────────────────────────────────── -->
+    <aside class="side">
+      <div class="brand">Backoffice <span>Intelligence</span></div>
+      <p>Consulta controlada sobre dados já filtrados.</p>
+      <nav class="nav" id="nav"></nav>
+      <div id="user-section"></div>
+    </aside>
+
+    <!-- ── Main ─────────────────────────────────────── -->
+    <main class="main">
+      <div class="top">
+        <div>
+          <div class="kicker">IA</div>
+          <h1>Assistente de consulta</h1>
+        </div>
+      </div>
+
+      <article class="card chat-container" style="animation: slideUp 0.5s ease both;">
+        <!-- Messages -->
+        <div class="chat-messages" id="messages">
+          <div class="chat-bubble system">
+            👋 Olá! Sou o assistente do Backoffice Intelligence. Pergunte sobre operações, pendências, prazos e indicadores.
+            <div class="meta">
+              <span class="badge resolvido">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                A IA só recebe um recorte já filtrado, nunca acessa o banco diretamente.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Suggestions -->
+        <div class="chat-suggestions" id="suggestions">
+          <button data-q="quais operações estão atrasadas?">🕐 Operações atrasadas</button>
+          <button data-q="resumo de pendências">📋 Resumo de pendências</button>
+          <button data-q="quantas inconsistências existem?">⚠️ Inconsistências</button>
+          <button data-q="qual o status geral do backoffice?">📊 Status geral</button>
+        </div>
+
+        <!-- Input -->
+        <div class="chat-input">
+          <input id="input-pergunta" placeholder="Sua pergunta sobre operações e pendências..." minlength="3" />
+          <button class="btn" id="btn-enviar" type="button">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            <span>Enviar</span>
+          </button>
+        </div>
+      </article>
+    </main>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    requireAuth();
+
+    /* ── Sidebar ───────────────────────────────────── */
+    document.getElementById("nav").innerHTML = `
+      <a href="/">${ICONS.dashboard} Dashboard</a>
+      <a href="/pendencias.html">${ICONS.pendencias} Pendências</a>
+      <a class="active" href="/ia.html">${ICONS.assistente} Assistente</a>
+    `;
+    renderUserCard("user-section");
+    document.querySelector(".mobile-toggle").innerHTML = ICONS.menu;
+    setupMobileSidebar();
+
+    /* ── Elements ──────────────────────────────────── */
+    const messagesEl = document.getElementById("messages");
+    const inputEl = document.getElementById("input-pergunta");
+    const btnEnviar = document.getElementById("btn-enviar");
+    const suggestionsEl = document.getElementById("suggestions");
+
+    /* ── Add bubble ────────────────────────────────── */
+    function addBubble(text, type = "system", meta = null) {
+      const bubble = document.createElement("div");
+      bubble.className = `chat-bubble ${type}`;
+      bubble.textContent = text;
+      if (meta) {
+        const metaEl = document.createElement("div");
+        metaEl.className = "meta";
+        metaEl.innerHTML = meta;
+        bubble.appendChild(metaEl);
+      }
+      messagesEl.appendChild(bubble);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return bubble;
+    }
+
+    function addTyping() {
+      const el = document.createElement("div");
+      el.className = "typing-indicator";
+      el.id = "typing";
+      el.innerHTML = `<div class="dot"></div><div class="dot"></div><div class="dot"></div>`;
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return el;
+    }
+
+    function removeTyping() {
+      const el = document.getElementById("typing");
+      if (el) el.remove();
+    }
+
+    /* ── Send question ─────────────────────────────── */
+    async function enviar(pergunta) {
+      if (!pergunta || pergunta.trim().length < 3) return;
+      pergunta = pergunta.trim();
+
+      // User bubble
+      addBubble(pergunta, "user");
+      inputEl.value = "";
+      inputEl.disabled = true;
+      btnEnviar.disabled = true;
+
+      // Typing
+      addTyping();
+
+      try {
+        const data = await api("/ia/consulta", {
+          method: "POST",
+          body: JSON.stringify({ pergunta }),
+        });
+        removeTyping();
+
+        const metaBadge = data.usado_llm
+          ? `<span class="badge ok" style="animation:none">
+               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/></svg>
+               via LLM · ${data.registros_considerados} registros
+             </span>`
+          : `<span class="badge resolvido" style="animation:none">
+               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+               resposta local · ${data.registros_considerados} registros
+             </span>`;
+
+        addBubble(data.resposta, "system", metaBadge);
+      } catch (err) {
+        removeTyping();
+        addBubble("Erro ao consultar: " + err.message, "system");
+        showToast(err.message, "error");
+      }
+
+      inputEl.disabled = false;
+      btnEnviar.disabled = false;
+      inputEl.focus();
+    }
+
+    /* ── Event listeners ───────────────────────────── */
+    btnEnviar.addEventListener("click", () => enviar(inputEl.value));
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        enviar(inputEl.value);
+      }
+    });
+
+    // Suggestion chips
+    suggestionsEl.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        enviar(btn.dataset.q);
+      });
+    });
+  </script>
+</body>
+</html>

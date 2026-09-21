@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Central de pendências — filtre e gerencie pendências de operações de backoffice." />
+  <title>Pendências · Backoffice Intelligence</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <!-- mobile -->
+  <button class="mobile-toggle" aria-label="Menu"></button>
+  <div class="mobile-overlay"></div>
+
+  <div class="shell">
+    <!-- ── Sidebar ──────────────────────────────────── -->
+    <aside class="side">
+      <div class="brand">Backoffice <span>Intelligence</span></div>
+      <p>Central operacional de pendências.</p>
+      <nav class="nav" id="nav"></nav>
+      <div id="user-section"></div>
+    </aside>
+
+    <!-- ── Main ─────────────────────────────────────── -->
+    <main class="main">
+      <div class="top">
+        <div>
+          <div class="kicker">Central</div>
+          <h1>Pendências</h1>
+        </div>
+      </div>
+
+      <!-- Status counters -->
+      <div class="status-counters" id="counters"></div>
+
+      <!-- Table -->
+      <article class="card" style="animation: slideUp 0.5s ease both; animation-delay: 0.2s;">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Operação</th>
+                <th>Tipo</th>
+                <th>Prazo</th>
+                <th>Status</th>
+                <th>Descrição</th>
+                <th style="text-align: right;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </article>
+    </main>
+  </div>
+
+  <!-- Modal Operação (para corrigir pendência diretamente) -->
+  <div class="modal-backdrop" id="modal-op">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="modal-op-title">Corrigir Operação</h2>
+        <button class="modal-close" type="button" onclick="fecharModalOperacao()">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form id="form-op">
+        <input type="hidden" id="op-id" />
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Código da Operação <span class="req">*</span></label>
+            <input type="text" id="op-codigo" required placeholder="Ex: OP-0120" />
+          </div>
+          <div class="form-group">
+            <label>Cliente</label>
+            <select id="op-cliente-id">
+              <option value="">Sem cliente associado</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Tipo da Operação <span class="req">*</span></label>
+            <select id="op-tipo" required>
+              <option value="investimento">Investimento</option>
+              <option value="seguro">Seguro</option>
+              <option value="consorcio">Consórcio</option>
+              <option value="financiamento">Financiamento</option>
+              <option value="plano_saude">Plano de Saúde</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Valor (R$)</label>
+            <input type="number" step="0.01" id="op-valor" placeholder="Ex: 50000.00" />
+          </div>
+          <div class="form-group">
+            <label>Data da Operação</label>
+            <input type="date" id="op-data-op" />
+          </div>
+          <div class="form-group">
+            <label>Data de Vencimento</label>
+            <input type="date" id="op-data-venc" />
+          </div>
+          <div class="form-group full">
+            <label>Status da Operação</label>
+            <select id="op-status">
+              <option value="ativo">Ativo</option>
+              <option value="em_analise">Em análise</option>
+              <option value="liquidado">Liquidado</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
+          </div>
+          <div class="form-group full">
+            <label>Observações</label>
+            <textarea id="op-obs" rows="2" placeholder="Observações e detalhes desta operação..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn ghost" type="button" onclick="fecharModalOperacao()">Cancelar</button>
+          <button class="btn" type="submit" id="btn-salvar-op">
+            <span>Salvar e Revalidar</span>
+            <div class="spinner"></div>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    requireAuth();
+
+    /* ── Sidebar ───────────────────────────────────── */
+    document.getElementById("nav").innerHTML = `
+      <a href="/">${ICONS.dashboard} Dashboard</a>
+      <a class="active" href="/pendencias.html">${ICONS.pendencias} Pendências</a>
+      <a href="/ia.html">${ICONS.assistente} Assistente</a>
+    `;
+    renderUserCard("user-section");
+    document.querySelector(".mobile-toggle").innerHTML = ICONS.menu;
+    setupMobileSidebar();
+
+    /* ── State ─────────────────────────────────────── */
+    let currentFilter = "";
+    let allItems = [];
+    let clientesCache = [];
+
+    /* ── Clientes ──────────────────────────────────── */
+    async function carregarClientes() {
+      try {
+        clientesCache = await api("/clientes");
+        const sel = document.getElementById("op-cliente-id");
+        sel.innerHTML = '<option value="">Sem cliente associado</option>' +
+          clientesCache.map(c => `<option value="${c.id}">${c.nome} (${c.documento})</option>`).join("");
+      } catch (e) {
+        console.warn("Erro ao listar clientes", e);
+      }
+    }
+
+    /* ── Load ──────────────────────────────────────── */
+    async function load() {
+      allItems = await api("/pendencias");
+      renderCounters();
+      renderTable();
+    }
+
+    function renderCounters() {
+      const counts = { critico: 0, pendente: 0, resolvido: 0 };
+      allItems.forEach((p) => { if (counts[p.status] !== undefined) counts[p.status]++; });
+
+      const countersEl = document.getElementById("counters");
+      const items = [
+        { key: "", label: "Todos", count: allItems.length, cls: "" },
+        { key: "critico", label: "Crítico", count: counts.critico, cls: "critico" },
+        { key: "pendente", label: "Pendente", count: counts.pendente, cls: "pendente" },
+        { key: "resolvido", label: "Resolvido", count: counts.resolvido, cls: "resolvido" },
+      ];
+      countersEl.innerHTML = items.map((c) => `
+        <div class="status-counter ${c.cls} ${currentFilter === c.key ? "active" : ""}" data-status="${c.key}">
+          ${c.label} <b>${c.count}</b>
+        </div>
+      `).join("");
+
+      countersEl.querySelectorAll(".status-counter").forEach((el) => {
+        el.addEventListener("click", () => {
+          currentFilter = el.dataset.status;
+          renderCounters();
+          renderTable();
+        });
+      });
+    }
+
+    function renderTable() {
+      const filtered = currentFilter
+        ? allItems.filter((p) => p.status === currentFilter)
+        : allItems;
+
+      const tbody = document.getElementById("rows");
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6">
+          <div class="empty-state">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+            <p>Nenhuma pendência ${currentFilter ? `com status "${currentFilter}"` : "encontrada"}.</p>
+            <p class="hint">Tente outro filtro ou importe novos dados.</p>
+          </div>
+        </td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map((p, i) => `
+        <tr style="animation: fadeIn 0.3s ease both; animation-delay: ${Math.min(i * 0.03, 0.5)}s">
+          <td><strong>${p.codigo_operacao || p.operacao_id}</strong></td>
+          <td>${p.tipo}</td>
+          <td>${formatDate(p.prazo)}</td>
+          <td>${badge(p.status)}</td>
+          <td>${p.descricao}</td>
+          <td style="text-align: right;">
+            <div class="actions-cell" style="justify-content: flex-end;">
+              ${p.status !== "resolvido" ? `
+                <button class="btn-action resolve" onclick="resolverPendencia(${p.id})" title="Marcar como resolvida">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  Resolver
+                </button>
+              ` : `
+                <button class="btn-action" style="opacity: 0.5; cursor: default" title="Já resolvida">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+              `}
+              <button class="btn-action edit" onclick="corrigirOperacao(${p.operacao_id})" title="Ver / Editar operação vinculada">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+              </button>
+              <button class="btn-action delete" onclick="excluirPendencia(${p.id})" title="Excluir pendência">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    /* ── Resolver Pendência ─────────────────────────── */
+    async function resolverPendencia(id) {
+      try {
+        await api(`/pendencias/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: "resolvido" }),
+        });
+        showToast("Pendência marcada como resolvida!", "success");
+        await load();
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    /* ── Excluir Pendência ─────────────────────────── */
+    async function excluirPendencia(id) {
+      if (!confirm("Deseja realmente excluir esta pendência?")) return;
+      try {
+        await api(`/pendencias/${id}`, { method: "DELETE" });
+        showToast("Pendência removida!", "success");
+        await load();
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    /* ── Corrigir Operação (Modal) ──────────────────── */
+    async function corrigirOperacao(operacaoId) {
+      try {
+        const op = await api(`/operacoes/${operacaoId}`);
+        const modal = document.getElementById("modal-op");
+        document.getElementById("modal-op-title").textContent = `Corrigir Operação: ${op.codigo}`;
+        document.getElementById("op-id").value = op.id;
+        document.getElementById("op-codigo").value = op.codigo || "";
+        document.getElementById("op-cliente-id").value = op.cliente_id || "";
+        document.getElementById("op-tipo").value = op.tipo || "investimento";
+        document.getElementById("op-valor").value = op.valor != null ? op.valor : "";
+        document.getElementById("op-data-op").value = op.data_operacao || "";
+        document.getElementById("op-data-venc").value = op.data_vencimento || "";
+        document.getElementById("op-status").value = op.status_operacao || "ativo";
+        document.getElementById("op-obs").value = op.observacao || "";
+        modal.classList.add("open");
+      } catch (err) {
+        showToast("Erro ao carregar detalhes da operação: " + err.message, "error");
+      }
+    }
+
+    function fecharModalOperacao() {
+      document.getElementById("modal-op").classList.remove("open");
+    }
+
+    /* ── Salvar Operação Corrigida ──────────────────── */
+    document.getElementById("form-op").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("btn-salvar-op");
+      btn.classList.add("loading");
+      btn.disabled = true;
+
+      const opId = document.getElementById("op-id").value;
+      const valorStr = document.getElementById("op-valor").value;
+      const clienteIdStr = document.getElementById("op-cliente-id").value;
+
+      const payload = {
+        codigo: document.getElementById("op-codigo").value.trim(),
+        tipo: document.getElementById("op-tipo").value,
+        valor: valorStr ? parseFloat(valorStr) : null,
+        cliente_id: clienteIdStr ? parseInt(clienteIdStr) : null,
+        data_operacao: document.getElementById("op-data-op").value || null,
+        data_vencimento: document.getElementById("op-data-venc").value || null,
+        status_operacao: document.getElementById("op-status").value,
+        observacao: document.getElementById("op-obs").value.trim() || null,
+      };
+
+      try {
+        await api(`/operacoes/${opId}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+        showToast(`Operação ${payload.codigo} atualizada e revalidada!`, "success");
+        fecharModalOperacao();
+        await load();
+      } catch (err) {
+        showToast(err.message, "error");
+      } finally {
+        btn.classList.remove("loading");
+        btn.disabled = false;
+      }
+    });
+
+    /* ── Fechar modal clicando fora ────────────────── */
+    window.addEventListener("click", (e) => {
+      const modal = document.getElementById("modal-op");
+      if (e.target === modal) fecharModalOperacao();
+    });
+
+    /* ── Init ──────────────────────────────────────── */
+    carregarClientes();
+    load().catch((err) => showToast(err.message, "error"));
+  </script>
+</body>
+</html>

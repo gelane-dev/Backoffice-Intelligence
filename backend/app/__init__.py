@@ -1,0 +1,1 @@
+"""Backoffice Intelligence — API FastAPI."""

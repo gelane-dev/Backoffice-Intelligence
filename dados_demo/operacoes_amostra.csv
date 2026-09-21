@@ -1,0 +1,5 @@
+codigo,documento_cliente,nome_cliente,tipo,valor,data_operacao,data_vencimento,status_operacao,observacao
+IMP-0001,20000000001,Cliente Importacao 1,consorcio,2610.5,2026-08-30,2026-09-21,aberta,amostra
+IMP-0007,20000000007,Cliente Importacao 7,financiamento,3273.5,2026-08-24,2026-09-17,aberta,atraso
+IMP-0011,20000000011,Cliente Importacao 11,,3715.5,2026-08-20,2026-10-01,aberta,tipo vazio
+IMP-0013,20000000013,Cliente Importacao 13,plano_saude,,2026-08-18,2026-10-03,aberta,valor vazio
